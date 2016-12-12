@@ -46,7 +46,7 @@ def tprint(string, dt=1, tag='default'):
     """ Print progress of a loop every dt seconds """
     ptime = _tprint_times.get(tag, 0)
     if (time.time() - ptime) > dt:
-        print(string)
+        logging.info(string)
         _tprint_times[tag] = time.time()
 
 

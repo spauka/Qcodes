@@ -1,7 +1,6 @@
 """Instrument base class."""
 import logging
 import time
-import warnings
 import weakref
 
 from qcodes.utils.metadata import Metadatable
@@ -170,7 +169,7 @@ class Instrument(Metadatable, DelegateAttributes, NestedAttrAccess,
         con_msg = ('Connected to: {vendor} {model} '
                    '(serial:{serial}, firmware:{firmware}) '
                    'in {t:.2f}s'.format(t=t, **idn))
-        print(con_msg)
+        logging.info(con_msg)
 
     def __repr__(self):
         """Simplified repr giving just the class and name."""
@@ -636,12 +635,13 @@ class Instrument(Metadatable, DelegateAttributes, NestedAttrAccess,
         set method.
 
         Arguments:
-            verbose (bool): If True, then information about the parameters that are being check is printed.
+            verbose (bool): If True, then information about the parameters that
+                are being check is printed.
 
         """
         for k, p in self.parameters.items():
             if p.has_get and p.has_set:
                 value = p.get()
                 if verbose:
-                    print('validate_status: param %s: %s' % (k, value))
+                    logging.info('validate_status: param %s: %s' % (k, value))
                 p.validate(value)

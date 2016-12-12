@@ -1,10 +1,14 @@
-from functools import partial
+import logging
 import re
 import time
+from functools import partial
+
 import numpy as np
 
 from qcodes import IPInstrument
 from qcodes.utils.validators import Enum, Anything
+
+log = logging.getLogger(__name__)
 
 
 class MercuryiPS(IPInstrument):
@@ -334,7 +338,7 @@ class MercuryiPS(IPInstrument):
         rep = self.ask(msg)
         self._latest_response = rep
         if 'INVALID' in rep:
-            print('warning', msg, rep)
+            log.warning('%s %s', msg, rep)
 
     def _spheretocart(self, sphere):
         """

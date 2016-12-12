@@ -1,13 +1,14 @@
 import ctypes
 import logging
-import numpy as np
 import os
+
+import numpy as np
 
 from qcodes.instrument.base import Instrument
 from qcodes.instrument.parameter import Parameter
 from qcodes.utils import validators
 
-# TODO(damazter) (C) logging
+log = logging.getLogger(__name__)
 
 # these items are important for generalizing this code to multiple alazar cards
 # TODO(damazter) (W) remove 8 bits per sample requirement
@@ -524,15 +525,15 @@ class AlazarTech_ATS(Instrument):
 
         elif mode == 'TS':
             if (samples_per_record % buffers_per_acquisition != 0):
-                logging.warning('buffers_per_acquisition is not a divisor of '
-                                'samples per record which it should be in '
-                                'TS mode, rounding down in samples per buffer '
-                                'calculation')
+                log.warning('buffers_per_acquisition is not a divisor of \
+                             samples per record which it should be in \
+                             TS mode, rounding down in samples per buffer \
+                             calculation')
             samples_per_buffer = int(samples_per_record /
                                      buffers_per_acquisition)
             if self.records_per_buffer._get_byte() != 1:
-                logging.warning('records_per_buffer should be 1 in TS mode, '
-                                'defauling to 1')
+                log.warning('records_per_buffer should be 1 in TS mode, \
+                             defauling to 1')
                 self.records_per_buffer._set(1)
             records_per_buffer = self.records_per_buffer._get_byte()
 
@@ -559,7 +560,7 @@ class AlazarTech_ATS(Instrument):
         # make sure that allocated_buffers <= buffers_per_acquisition
         if (self.allocated_buffers._get_byte() >
                 self.buffers_per_acquisition._get_byte()):
-            print("'allocated_buffers' should be smaller than or equal to"
+            log.info("'allocated_buffers' should be smaller than or equal to"
                   "'buffers_per_acquisition'. Defaulting 'allocated_buffers' to"
                   "" + str(self.buffers_per_acquisition._get_byte()))
             self.allocated_buffers._set(
@@ -901,7 +902,7 @@ class Buffer:
         """
         if self._allocated:
             self.free_mem()
-            logging.warning(
+            log.warning(
                 'Buffer prevented memory leak; Memory released to Windows.\n'
                 'Memory should have been released before buffer was deleted.')
 

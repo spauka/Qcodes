@@ -45,12 +45,12 @@ Supported commands to .set_measurement or .each are:
     - Task: any callable that does not generate data
     - Wait: a delay
 """
-
-from datetime import datetime
+import logging
 import multiprocessing as mp
 import time
 import numpy as np
 import warnings
+from datetime import datetime
 
 from qcodes import config
 from qcodes.station import Station
@@ -67,6 +67,9 @@ from .actions import (_actions_snapshot, Task, Wait, _Measure, _Nest,
 # Switches off multiprocessing by default, cant' be altered after module
 USE_MP = config.core.legacy_mp
 MP_NAME = 'Measurement'
+
+# module logger
+log = logging.getLogger(__name__)
 
 
 def get_bg(return_first=False):
@@ -88,6 +91,8 @@ def get_bg(return_first=False):
     loops = [p for p in processes if getattr(p, 'name', '') == MP_NAME]
 
     if len(loops) > 1 and not return_first:
+        # TODO(giulioungaretti) this error message is maybe cute , but really
+        # not that informative
         raise RuntimeError('Oops, multiple loops are running???')
 
     if loops:
@@ -112,7 +117,7 @@ def halt_bg(timeout=5, traceback=True):
     """
     loop = get_bg(return_first=True)
     if not loop:
-        print('No loop running')
+        log.info('No loop running')
         return
 
     if traceback:
@@ -126,7 +131,8 @@ def halt_bg(timeout=5, traceback=True):
     if loop.is_alive():
         loop.terminate()
         loop.join(timeout/2)
-        print('Background loop did not respond to halt signal, terminated')
+        msg = 'Background loop did not respond to halt signal, terminated'
+        log.warning(msg)
 
     _clear_data_manager()
 
@@ -779,8 +785,7 @@ class ActiveLoop(Metadatable):
         prev_loop = get_bg()
         if prev_loop:
             if not quiet:
-                print('Waiting for the previous background Loop to finish...',
-                      flush=True)
+                log.info('Waiting for the previous background Loop to finish.')
             prev_loop.join()
 
         data_set = self.get_data_set(data_manager, *args, **kwargs)
@@ -812,8 +817,9 @@ class ActiveLoop(Metadatable):
         data_set.save_metadata()
 
         if prev_loop and not quiet:
-            print('...done. Starting ' + (data_set.location or 'new loop'),
-                  flush=True)
+            msg = '...done. Starting {}'.format(data_set.location or
+                                                'new loop')
+            log.info(msg)
 
         try:
             if background:
@@ -846,8 +852,8 @@ class ActiveLoop(Metadatable):
 
         finally:
             if not quiet:
-                print(repr(self.data_set))
-                print(datetime.now().strftime('started at %Y-%m-%d %H:%M:%S'))
+                log.info(repr(self.data_set))
+                log.info(datetime.now().strftime('started at %Y-%m-%d %H:%M:%S'))
 
             # After normal loop execution we clear the data_set so we can run
             # again. But also if something went wrong during the loop execution
