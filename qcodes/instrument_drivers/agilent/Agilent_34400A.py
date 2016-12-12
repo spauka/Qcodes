@@ -1,5 +1,9 @@
+import logging
+
 from qcodes.utils.validators import Enum, Strings
 from qcodes import VisaInstrument
+
+log = logging.getLogger(__name__)
 
 
 class Agilent_34400A(VisaInstrument):
@@ -134,7 +138,7 @@ class Agilent_34400A(VisaInstrument):
             err = self.ask('SYST:ERR?')
             if 'No error' in err:
                 return
-            print(err)
+            log.error(err)
 
     def init_measurement(self):
         self.write('INIT')

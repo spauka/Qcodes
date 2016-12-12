@@ -1,10 +1,12 @@
 import time
 import logging
+
 import numpy as np
 import visa  # used for the parity constant
-import traceback
 
 from qcodes import VisaInstrument, validators as vals
+
+log = logging.getLogger(__name__)
 
 
 class IVVI(VisaInstrument):
@@ -91,10 +93,11 @@ class IVVI(VisaInstrument):
         try:
             self.get_all()
         except Exception as ex:
-            print('IVVI: get_all() failed, maybe connected to wrong port?')
-            print(traceback.format_exc())
+            log.error('IVVI: get_all() failed, maybe connected to wrong port?')
+            log.exception("Exception:")
+            raise
 
-        print('Initialized IVVI-rack in %.2fs' % (t1-t0))
+        log.info('Initialized IVVI-rack in %.2fs' % (t1-t0))
 
     def get_idn(self):
         """

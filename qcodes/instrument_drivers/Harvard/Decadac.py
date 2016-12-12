@@ -3,6 +3,8 @@ from time import sleep
 from functools import partial
 from qcodes.instrument.visa import VisaInstrument
 
+log = logging.getLogger(__name__)
+
 
 class Decadac(VisaInstrument):
     """
@@ -115,8 +117,8 @@ class Decadac(VisaInstrument):
             try:
                 self.visa_handle.read()
             except UnicodeDecodeError:
-                logging.warning(" Decadac returned nothing and did nothing. " +
-                                "Please re-run the command")
+                log.warning("Decadac returned nothing and did nothing. \
+                             Please re-run the command")
                 pass
 
         if self.ramp_state:
@@ -141,7 +143,7 @@ class Decadac(VisaInstrument):
             mssg += ''.join(script) + runcmd
             self.visa_handle.write(mssg)
             sleep(0.0015*self.ramp_time)  # Required sleep.
-            self.visa_handle.read()  
+            self.visa_handle.read()
 
             # reset channel voltage ranges
             if slope < 0:
@@ -150,7 +152,6 @@ class Decadac(VisaInstrument):
             else:
                 self.visa_handle.write('U 65535;')
                 self.visa_handle.read()
-
 
     def set_ramping(self, state, time=None):
         """
@@ -167,7 +168,7 @@ class Decadac(VisaInstrument):
 
     def get_ramping(self):
         """
-        Queries the value of self.ramp_state and self.ramp_time. 
+        Queries the value of self.ramp_state and self.ramp_time.
 
         Returns:
             str: ramp state information
@@ -214,4 +215,3 @@ class Decadac(VisaInstrument):
                            3: lambda x: 2**16/10*(x-2**-16+10)}
         voltage_float = translationdict[self.voltranges[channel]](voltage)
         return str(int(voltage_float))
-
