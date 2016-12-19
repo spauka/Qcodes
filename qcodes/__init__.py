@@ -1,17 +1,26 @@
 """Set up the main qcodes namespace."""
-
 # flake8: noqa (we don't need the "<...> imported but unused" error)
-
-# just for convenience in debugging, so we don't have to
-# separately import multiprocessing
+# config and logging
+import logging
+# TODO(giulioungaretti) remove this import
 from multiprocessing import active_children
 
-# config
-
 from qcodes.config import Config
-
 config = Config()
 
+from qcodes.utils.zmqlogger import check_broker
+haz_broker = check_broker()
+if haz_broker:
+    from qcodes.utils.zmqlogger import QPUBHandler
+    import logging.config
+    import pkg_resources as pkgr
+    logger_config = pkgr.resource_filename(__name__, "./config/logging.conf")
+    logging.config.fileConfig(logger_config)
+else:
+    logging.warning("Can't publish logs, did you star the server?")
+
+
+# name space
 from qcodes.version import __version__
 from qcodes.process.helpers import set_mp_method
 from qcodes.utils.helpers import in_notebook
