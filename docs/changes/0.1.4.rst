@@ -1,0 +1,26 @@
+Changelog for QCoDeS 0.1.4
+==========================
+
+Breaking Changes
+----------------
+
+- Remove Multiprocessing ?
+
+New & Improved
+--------------
+
+- Devices:
+
+    - Voltage Devider: #492
+
+- Drivers:
+
+    - UFHLI (#466)
+    - Alazar (#491)
+ 
+Fixed
+-----
+
+- Setpoint units
+- Setpoint for multi param
+- 
