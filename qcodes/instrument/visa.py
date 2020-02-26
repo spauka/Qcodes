@@ -208,8 +208,17 @@ class VisaInstrument(Instrument):
             cmd: The command to send to the instrument.
         """
         with DelayedKeyboardInterrupt():
-            self.visa_log.debug(f"Writing: {cmd}")
-            nr_bytes_written, ret_code = self.visa_handle.write(cmd)
+            self.visa_log.debug("Writing: %s", cmd)
+            for i in range(3):
+                try:
+                    _, ret_code = self.visa_handle.write(cmd)
+                    break
+                except visa.VisaIOError as e:
+                    self.visa_log.warning("Visa error (%s) when writing to %r. "
+                                          "Retrying %d of 3 times.", e.abbreviation, self, i+1)
+                    if i == 2:
+                        raise
+                    continue
             self.check_error(ret_code)
 
     def ask_raw(self, cmd: str) -> str:
@@ -223,9 +232,18 @@ class VisaInstrument(Instrument):
             str: The instrument's response.
         """
         with DelayedKeyboardInterrupt():
-            self.visa_log.debug(f"Querying: {cmd}")
-            response = self.visa_handle.query(cmd)
-            self.visa_log.debug(f"Response: {response}")
+            self.visa_log.debug("Querying: %s", cmd)
+            for i in range(3):
+                try:
+                    response = self.visa_handle.query(cmd)
+                    break
+                except visa.VisaIOError as e:
+                    self.visa_log.warning("Visa error (%s) when asking from %r. "
+                                          "Retrying %d of 3 times.", e.abbreviation, self, i+1)
+                    if i == 2:
+                        raise
+                    continue
+            self.visa_log.debug("Response: %s", response)
         return response
 
     def snapshot_base(self, update: bool = True,
