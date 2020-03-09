@@ -7,11 +7,10 @@ import visa
 import pyvisa.constants as vi_const
 import pyvisa.resources
 
+from ..logger.instrument_logger import get_instrument_logger
+from ..utils import validators as vals
+from ..utils.delaykeyboardinterrupt import DelayedKeyboardInterrupt
 from .base import Instrument, InstrumentBase
-
-import qcodes.utils.validators as vals
-from qcodes.logger.instrument_logger import get_instrument_logger
-from qcodes.utils.delaykeyboardinterrupt import DelayedKeyboardInterrupt
 
 VISA_LOGGER = '.'.join((InstrumentBase.__module__, 'com', 'visa'))
 
