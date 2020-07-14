@@ -35,7 +35,6 @@ from qcodes.utils.helpers import NumpyJSONEncoder
 from qcodes.utils.deprecate import deprecate
 import qcodes.utils.validators as vals
 from qcodes.utils.delaykeyboardinterrupt import DelayedKeyboardInterrupt
-import qcodes.config
 
 log = logging.getLogger(__name__)
 
@@ -52,22 +51,6 @@ setpoints_type = Sequence[Union[str, _BaseParameter]]
 
 class ParameterTypeError(Exception):
     pass
-
-
-@deprecate("This function is no longer used and will be removed soon.")
-def is_number(thing: Any) -> bool:
-    """
-    Test if an object can be converted to a float UNLESS it is a string or
-    complex.
-    """
-    if isinstance(thing, (str, complex, np.complex,
-                          np.complex128, np.complex64)):
-        return False
-    try:
-        float(thing)
-        return True
-    except (ValueError, TypeError):
-        return False
 
 
 class DataSaver:
@@ -100,7 +83,7 @@ class DataSaver:
                                     callback_kwargs={'run_id':
                                                      self._dataset.run_id,
                                                      'snapshot': snapshot})
-        default_subscribers = qcodes.config.subscription.default_subscribers
+        default_subscribers = qc.config.subscription.default_subscribers
         for subscriber in default_subscribers:
             self._dataset.subscribe_from_config(subscriber)
 
@@ -359,7 +342,7 @@ class DataSaver:
 
     @staticmethod
     def _validate_result_types(
-            results_dict: Dict[ParamSpecBase, np.ndarray]) -> None:
+            results_dict: Mapping[ParamSpecBase, np.ndarray]) -> None:
         """
         Validate the type of the results
         """
@@ -574,7 +557,7 @@ class Runner:
     to the database. Additionally, it may perform experiment bootstrapping
     and clean-up after a measurement.
     """
-
+    _is_entered: bool = False
     def __init__(
             self, enteractions: List, exitactions: List,
             experiment: Experiment = None, station: Station = None,
@@ -584,13 +567,14 @@ class Runner:
             subscribers: Sequence[Tuple[Callable,
                                         Union[MutableSequence,
                                               MutableMapping]]] = None,
-            parent_datasets: List[Dict] = [],
+            parent_datasets: Sequence[Dict] = (),
             extra_log_info: str = '',
             write_in_background: bool = False) -> None:
 
         if write_in_background and (write_period is not None):
             warnings.warn(f"The specified write period of {write_period} s "
                           "will be ignored, since write_in_background==True")
+
 
         self.enteractions = enteractions
         self.exitactions = exitactions
@@ -618,6 +602,13 @@ class Runner:
     def __enter__(self) -> DataSaver:
         # TODO: should user actions really precede the dataset?
         # first do whatever bootstrapping the user specified
+
+        if Runner._is_entered:
+            log.warning('Nested measurements are not supported. This will '
+                        'become an error in future releases of QCoDeS')
+
+        Runner._is_entered = True
+
         for func, args in self.enteractions:
             func(*args)
 
@@ -679,6 +670,7 @@ class Runner:
         with DelayedKeyboardInterrupt():
             self.datasaver.flush_data_to_database()
 
+            Runner._is_entered = False
             # perform the "teardown" events
             for func, args in self.exitactions:
                 func(*args)
@@ -709,7 +701,8 @@ T = TypeVar('T', bound='Measurement')
 
 class Measurement:
     """
-    Measurement procedure container
+    Measurement procedure container. Note that multiple measurement
+    instances cannot be nested.
 
     Args:
         exp: Specify the experiment to use. If not given

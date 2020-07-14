@@ -1,8 +1,6 @@
 """
 This module contains useful SQL queries and their combinations which are
 specific to the domain of QCoDeS database.
-
-Historically this code was part of sqlite_base.py file.
 """
 import logging
 import sqlite3
@@ -28,6 +26,7 @@ from qcodes.dataset.sqlite.query_helpers import (
     select_many_where, insert_values, insert_column, is_column_in_table,
     VALUES, update_where)
 from qcodes.utils.deprecate import deprecate
+from qcodes.configuration import Config
 
 
 log = logging.getLogger(__name__)
@@ -99,6 +98,8 @@ def _build_data_query(table_name: str,
     return query
 
 
+@deprecate('This method does not accurately represent the dataset.',
+               'Use `get_parameter_data` instead.')
 def get_data(conn: ConnectionPlus,
              table_name: str,
              columns: List[str],
@@ -234,6 +235,8 @@ def get_parameter_data(conn: ConnectionPlus,
     return output
 
 
+@deprecate('This method does not accurately represent the dataset.',
+               'Use `get_parameter_data` instead.')
 def get_values(conn: ConnectionPlus,
                table_name: str,
                param_name: str) -> List[List[Any]]:
@@ -289,8 +292,8 @@ def get_parameter_tree_values(conn: ConnectionPlus,
         index is parameter value (first toplevel_param, then other_param_names)
     """
 
-    offset = (start - 1) if start is not None else 0
-    limit = (end - offset) if end is not None else -1
+    offset = max((start - 1), 0) if start is not None else 0
+    limit = max((end - offset), 0) if end is not None else -1
 
     if start is not None and end is not None and start > end:
         limit = 0
@@ -322,6 +325,7 @@ def get_parameter_tree_values(conn: ConnectionPlus,
     return res
 
 
+@deprecate(alternative="get_parameter_data")
 def get_setpoints(conn: ConnectionPlus,
                   table_name: str,
                   param_name: str) -> Dict[str, List[List[Any]]]:
@@ -521,35 +525,6 @@ def get_guids_from_run_spec(conn: ConnectionPlus,
     return results
 
 
-@deprecate()
-def get_layout(conn: ConnectionPlus,
-               layout_id: int) -> Dict[str, str]:
-    """
-    Get the layout of a single parameter for plotting it
-
-    Args:
-        conn: The database connection
-        layout_id: The run_id as in the layouts table
-
-    Returns:
-        A dict with name, label, and unit
-    """
-    sql = """
-    SELECT parameter, label, unit FROM layouts WHERE layout_id=?
-    """
-    c = atomic_transaction(conn, sql, layout_id)
-    t_res = many(c, 'parameter', 'label', 'unit')
-    res = dict(zip(['name', 'label', 'unit'], t_res))
-    return res
-
-
-@deprecate()
-def get_layout_id(conn: ConnectionPlus,
-                  parameter: Union[ParamSpec, str],
-                  run_id: int) -> int:
-    return _get_layout_id(conn, parameter, run_id)
-
-
 def _get_layout_id(conn: ConnectionPlus,
                    parameter: Union[ParamSpec, str],
                    run_id: int) -> int:
@@ -582,12 +557,6 @@ def _get_layout_id(conn: ConnectionPlus,
     return res
 
 
-@deprecate()
-def get_dependents(conn: ConnectionPlus,
-                   run_id: int) -> List[int]:
-    return _get_dependents(conn, run_id)
-
-
 def _get_dependents(conn: ConnectionPlus,
                     run_id: int) -> List[int]:
     """
@@ -601,12 +570,6 @@ def _get_dependents(conn: ConnectionPlus,
     c = atomic_transaction(conn, sql, run_id)
     res = [d[0] for d in many_many(c, 'layout_id')]
     return res
-
-
-@deprecate()
-def get_dependencies(conn: ConnectionPlus,
-                     layout_id: int) -> List[List[int]]:
-    return _get_dependencies(conn, layout_id)
 
 
 def _get_dependencies(conn: ConnectionPlus,
@@ -627,65 +590,7 @@ def _get_dependencies(conn: ConnectionPlus,
     return res
 
 
-@deprecate(alternative='DataSet.dependent_parameters')
-def get_non_dependencies(conn: ConnectionPlus,
-                         run_id: int) -> List[str]:
-    """
-    Return all parameters for a given run that are not dependencies of
-    other parameters, i.e. return the top level parameters of the given
-    run
-
-    Args:
-        conn: connection to the database
-        run_id: The run_id of the run in question
-
-    Returns:
-        A list of the parameter names.
-    """
-    parameters = get_parameters(conn, run_id)
-    maybe_independent = []
-    dependent = []
-    dependencies: List[str] = []
-
-    for param in parameters:
-        if len(param.depends_on) == 0:
-            maybe_independent.append(param.name)
-        else:
-            dependent.append(param.name)
-            dependencies.extend(param.depends_on.split(', '))
-
-    independent_set = set(maybe_independent) - set(dependencies)
-    dependent_set = set(dependent)
-    result = independent_set.union(dependent_set)
-    return sorted(list(result))
-
-
 # Higher level Wrappers
-
-@deprecate()
-def get_parameter_dependencies(conn: ConnectionPlus, param: str,
-                               run_id: int) -> List[ParamSpec]:
-    """
-    Given a parameter name return a list of ParamSpecs where the first
-    element is the ParamSpec of the given parameter and the rest of the
-    elements are ParamSpecs of its dependencies.
-
-    Args:
-        conn: connection to the database
-        param: the name of the parameter to look up
-        run_id: run_id: The run_id of the run in question
-
-    Returns:
-        List of ParameterSpecs of the parameter followed by its dependencies.
-    """
-    layout_id = get_layout_id(conn, param, run_id)
-    deps = get_dependencies(conn, layout_id)
-    parameters = [get_paramspec(conn, run_id, param)]
-
-    for dep in deps:
-        depinfo = get_layout(conn, dep[0])
-        parameters.append(get_paramspec(conn, run_id, depinfo['name']))
-    return parameters
 
 
 def new_experiment(conn: ConnectionPlus,
@@ -921,6 +826,8 @@ def get_runs(conn: ConnectionPlus,
 
     Args:
         conn: database connection
+        exp_id: id of the experiment to look inside.
+            If None all experiments will be included
 
     Returns:
         list of rows
@@ -941,24 +848,33 @@ def get_runs(conn: ConnectionPlus,
     return c.fetchall()
 
 
-def get_last_run(conn: ConnectionPlus, exp_id: int) -> Optional[int]:
+def get_last_run(conn: ConnectionPlus,
+                 exp_id: Optional[int] = None) -> Optional[int]:
     """
     Get run_id of the last run in experiment with exp_id
 
     Args:
         conn: connection to use for the query
-        exp_id: id of the experiment to look inside
+        exp_id: id of the experiment to look inside.
+            If None all experiments will be included
 
     Returns:
         the integer id of the last run or None if there are not runs in the
         experiment
     """
-    query = """
-    SELECT run_id, max(run_timestamp), exp_id
-    FROM runs
-    WHERE exp_id = ?;
-    """
-    c = atomic_transaction(conn, query, exp_id)
+    if exp_id is not None:
+        query = """
+            SELECT run_id, max(run_timestamp), exp_id
+            FROM runs
+            WHERE exp_id = ?;
+            """
+        c = atomic_transaction(conn, query, exp_id)
+    else:
+        query = """
+            SELECT run_id, max(run_timestamp)
+            FROM runs
+            """
+        c = atomic_transaction(conn, query)
     return one(c, 'run_id')
 
 
@@ -1144,12 +1060,6 @@ def _update_experiment_run_counter(conn: ConnectionPlus, exp_id: int,
     atomic_transaction(conn, query, run_counter, exp_id)
 
 
-@deprecate()
-def get_parameters(conn: ConnectionPlus,
-                   run_id: int) -> List[ParamSpec]:
-    return _get_parameters(conn, run_id)
-
-
 def _get_parameters(conn: ConnectionPlus,
                     run_id: int) -> List[ParamSpec]:
     """
@@ -1177,13 +1087,6 @@ def _get_parameters(conn: ConnectionPlus,
         parspecs.append(_get_paramspec(conn, run_id, param_name))
 
     return parspecs
-
-
-@deprecate()
-def get_paramspec(conn: ConnectionPlus,
-                  run_id: int,
-                  param_name: str) -> ParamSpec:
-    return _get_paramspec(conn, run_id, param_name)
 
 
 def _get_paramspec(conn: ConnectionPlus,
@@ -1691,7 +1594,7 @@ def update_GUIDs(conn: ConnectionPlus) -> None:
 
     log.info('Commencing update of all GUIDs in database')
 
-    cfg = qc.Config()
+    cfg = qc.config
 
     location = cfg['GUID_components']['location']
     work_station = cfg['GUID_components']['work_station']

@@ -12,9 +12,10 @@ def readme():
 
 extras = {
     'MatPlot': ('matplotlib', '2.2.3'),
-    'QtPlot': ('pyqtgraph', '0.10.0'),
+    'QtPlot': ('pyqtgraph', '0.11.0'),
     'coverage tests': ('coverage', '4.0'),
-    'Slack': ('slacker', '0.9.42')
+    'Slack': ('slacker', '0.9.42'),
+    'ZurichInstruments': ('zhinst-qcodes', '0.1.1')
 }
 extras_require = {k: '>='.join(v) for k, v in extras.items()}
 
@@ -30,11 +31,13 @@ install_requires = [
     'pandas',
     'tabulate',
     'tqdm',
-    'applicationinsights',
+    'opencensus-ext-azure',
     'matplotlib>=2.2.3',
     "dataclasses;python_version<'3.7'",  # can be removed once we drop support for python 3.6
     "requirements-parser",
-    "importlib-metadata;python_version<'3.8'"
+    "importlib-metadata;python_version<'3.8'",
+    "typing_extensions",
+    "packaging>=20.0"
 ]
 
 setup(name='qcodes',
@@ -64,7 +67,7 @@ setup(name='qcodes',
       # packages=find_packages(exclude=["*.tests", "tests"]),
       packages=find_packages(),
       package_data={'qcodes': ['monitor/dist/*', 'monitor/dist/js/*',
-                               'monitor/dist/css/*', 'config/*.json',
+                               'monitor/dist/css/*', 'configuration/*.json',
                                'instrument/sims/*.yaml',
                                'tests/dataset/fixtures/2018-01-17/*/*',
                                'tests/drivers/auxiliary_files/*',

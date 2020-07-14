@@ -3,8 +3,7 @@ from copy import copy
 import re
 from unittest.mock import patch
 import random
-from typing import Sequence, Dict, Tuple, Optional
-import tempfile
+from typing import Sequence, Dict, Tuple, Optional, List
 import os
 
 import pytest
@@ -18,25 +17,13 @@ from qcodes import load_by_id, load_by_counter
 from qcodes.dataset.descriptions.rundescriber import RunDescriber
 from qcodes.dataset.descriptions.dependencies import InterDependencies_
 from qcodes.dataset.descriptions.param_spec import ParamSpecBase
-from qcodes.dataset.sqlite.queries import get_non_dependencies, \
-    _unicode_categories
+from qcodes.dataset.sqlite.queries import _unicode_categories
 from qcodes.tests.common import error_caused_by
 from qcodes.dataset.sqlite.database import get_DB_location
 from qcodes.dataset.data_set import CompletedError, DataSet
 from qcodes.dataset.guids import parse_guid
 from qcodes.dataset.sqlite.connection import path_to_dbfile
 from qcodes.utils.deprecate import QCoDeSDeprecationWarning
-# pylint: disable=unused-import
-from qcodes.tests.dataset.temporary_databases import (empty_temp_db,
-                                                      experiment, dataset,
-                                                      empty_temp_db_connection)
-from qcodes.tests.dataset.dataset_fixtures import scalar_dataset, \
-    scalar_dataset_with_nulls, array_dataset_with_nulls, \
-    array_dataset, multi_dataset, array_in_scalar_dataset, array_in_str_dataset, \
-    standalone_parameters_dataset, array_in_scalar_dataset_unrolled, \
-    varlen_array_in_scalar_dataset
-# pylint: disable=unused-import
-from qcodes.tests.dataset.test_dependencies import some_interdeps
 from qcodes.tests.dataset.test_links import generate_some_links
 
 pytest.register_assert_rewrite('qcodes.tests.dataset.helper_functions')
@@ -268,6 +255,7 @@ def test_add_experiments(experiment_name,
                                                           exp.exp_id,
                                                           loaded_dataset.counter)
 
+
 @pytest.mark.usefixtures("experiment")
 def test_dependent_parameters():
 
@@ -355,17 +343,17 @@ def test_add_data_1d():
     expected_x = []
     expected_y = []
     for x in range(100):
-        expected_x.append([x])
+        expected_x.append(x)
         y = 3 * x + 10
-        expected_y.append([y])
+        expected_y.append(y)
         mydataset.add_results([{"x": x, "y": y}])
 
     shadow_ds = make_shadow_dataset(mydataset)
 
-    assert mydataset.get_data('x') == expected_x
-    assert mydataset.get_data('y') == expected_y
-    assert shadow_ds.get_data('x') == expected_x
-    assert shadow_ds.get_data('y') == expected_y
+    np.testing.assert_array_equal(mydataset.get_parameter_data()['y']['x'], expected_x)
+    np.testing.assert_array_equal(mydataset.get_parameter_data()['y']['y'], expected_y)
+    np.testing.assert_array_equal(shadow_ds.get_parameter_data()['y']['x'], expected_x)
+    np.testing.assert_array_equal(shadow_ds.get_parameter_data()['y']['y'], expected_y)
 
     assert mydataset.completed is False
     mydataset.mark_completed()
@@ -394,22 +382,21 @@ def test_add_data_array():
     mydataset.set_interdependencies(idps)
     mydataset.mark_started()
 
-    expected_x = []
+    expected_x = np.arange(100)
     expected_y = []
     for x in range(100):
-        expected_x.append([x])
         y = np.random.random_sample(10)
-        expected_y.append([y])
+        expected_y.append(y)
         mydataset.add_results([{"x": x, "y": y}])
 
     shadow_ds = make_shadow_dataset(mydataset)
 
-    assert mydataset.get_data('x') == expected_x
-    assert shadow_ds.get_data('x') == expected_x
+    np.testing.assert_array_equal(mydataset.get_parameter_data()['x']['x'], np.array(expected_x))
+    np.testing.assert_array_equal(shadow_ds.get_parameter_data()['x']['x'], np.array(expected_x))
 
-    y_data = mydataset.get_data('y')
+    y_data = mydataset.get_parameter_data()['y']['y']
     np.testing.assert_allclose(y_data, expected_y)
-    y_data = shadow_ds.get_data('y')
+    y_data = shadow_ds.get_parameter_data()['y']['y']
     np.testing.assert_allclose(y_data, expected_y)
 
 
@@ -501,8 +488,8 @@ def test_numpy_ints(dataset):
 
     results = [{"x": tp(1)} for tp in numpy_ints]
     dataset.add_results(results)
-    expected_result = len(numpy_ints) * [[1]]
-    assert dataset.get_data("x") == expected_result
+    expected_result = np.ones(len(numpy_ints))
+    np.testing.assert_array_equal(dataset.get_parameter_data()["x"]["x"], expected_result)
 
 
 def test_numpy_floats(dataset):
@@ -517,8 +504,9 @@ def test_numpy_floats(dataset):
     numpy_floats = [np.float, np.float16, np.float32, np.float64]
     results = [{"y": tp(1.2)} for tp in numpy_floats]
     dataset.add_results(results)
-    expected_result = [[tp(1.2)] for tp in numpy_floats]
-    assert np.allclose(dataset.get_data("y"), expected_result, atol=1E-8)
+    expected_result = np.array([tp(1.2) for tp in numpy_floats])
+    data = dataset.get_parameter_data()["y"]["y"]
+    assert np.allclose(data, expected_result, atol=1E-8)
 
 
 def test_numpy_nan(dataset):
@@ -529,7 +517,7 @@ def test_numpy_nan(dataset):
 
     data_dict = [{"m": value} for value in [0.0, np.nan, 1.0]]
     dataset.add_results(data_dict)
-    retrieved = dataset.get_data("m")
+    retrieved = dataset.get_parameter_data()["m"]["m"]
     assert np.isnan(retrieved[1])
 
 
@@ -544,7 +532,7 @@ def test_numpy_inf(dataset):
 
     data_dict = [{"m": value} for value in [-np.inf, np.inf]]
     dataset.add_results(data_dict)
-    retrieved = dataset.get_data("m")
+    retrieved = dataset.get_parameter_data()["m"]["m"]
     assert np.isinf(retrieved).all()
 
 
@@ -580,18 +568,19 @@ def test_missing_keys(dataset):
 
     dataset.add_results(results)
 
-    assert dataset.get_values("x") == [[r["x"]] for r in results]
-    assert dataset.get_values("y") == [[r["y"]] for r in results if "y" in r]
-    assert dataset.get_values("a") == [[r["a"]] for r in results if "a" in r]
-    assert dataset.get_values("b") == [[r["b"]] for r in results if "b" in r]
+    loaded_data = dataset.get_parameter_data()
 
-    assert dataset.get_setpoints("a")['x'] == [[xv] for xv in xvals]
+    np.testing.assert_array_equal(loaded_data['a']['x'],
+                                  np.array(xvals))
+    np.testing.assert_array_equal(loaded_data['a']['a'],
+                                  np.array([fa(xv) for xv in xvals]))
 
-    tmp = [list(t) for t in zip(*(itertools.product(xvals, yvals)))]
-    expected_setpoints = [[[v] for v in vals] for vals in tmp]
-
-    assert dataset.get_setpoints("b")['x'] == expected_setpoints[0]
-    assert dataset.get_setpoints("b")['y'] == expected_setpoints[1]
+    np.testing.assert_array_equal(loaded_data['b']['x'],
+                                  np.repeat(np.array(xvals), 3))
+    np.testing.assert_array_equal(loaded_data['b']['y'],
+                                  np.tile(np.array(yvals), 3))
+    np.testing.assert_array_equal(loaded_data['b']['b'],
+                                  np.array([fb(xv, yv) for xv in xvals for yv in yvals]))
 
 
 def test_get_description(experiment, some_interdeps):
@@ -682,6 +671,9 @@ def test_parent_dataset_links_invalid_input():
 
     ds = DataSet()
 
+    for link in links:
+        assert link.head != ds.guid
+
     match = re.escape('Invalid input. Did not receive a list of Links')
     with pytest.raises(ValueError, match=match):
         ds.parent_dataset_links = [ds.guid]
@@ -731,7 +723,7 @@ class TestGetData:
     xvals = list(range(n_vals))
     # this is the format of how data is returned by DataSet.get_data
     # which means "a list of table rows"
-    xdata = [[x] for x in xvals]
+    xdata = np.array(xvals)
 
     @pytest.fixture(autouse=True)
     def ds_with_vals(self, dataset):
@@ -782,17 +774,12 @@ class TestGetData:
     )
     def test_get_data_with_start_and_end_args(self, ds_with_vals,
                                               start, end, expected):
-        assert expected == ds_with_vals.get_data(self.x, start=start, end=end)
-
-
-def test_mark_complete_is_deprecated_and_marks_as_completed(experiment):
-    """Test that the deprecated `mark_complete` calls `mark_completed`"""
-    ds = DataSet()
-
-    with patch.object(ds, 'mark_completed', autospec=True) as mark_completed:
-        with pytest.warns(QCoDeSDeprecationWarning):
-            ds.mark_complete()
-        mark_completed.assert_called_once()
+        data = ds_with_vals.get_parameter_data(self.x, start=start, end=end)['x']
+        if len(expected) == 0:
+            assert data == {}
+        else:
+            data = data['x']
+            np.testing.assert_array_equal(data, expected)
 
 
 @settings(deadline=600)
@@ -1223,7 +1210,7 @@ def limit_data_to_start_end(start, end, input_names, expected_names,
 
 
 @pytest.mark.usefixtures('experiment')
-def test_write_data_to_text_file_save():
+def test_write_data_to_text_file_save(tmp_path_factory):
     dataset = new_data_set("dataset")
     xparam = ParamSpecBase("x", 'numeric')
     yparam = ParamSpecBase("y", 'numeric')
@@ -1235,15 +1222,15 @@ def test_write_data_to_text_file_save():
     dataset.add_results(results)
     dataset.mark_completed()
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        dataset.write_data_to_text_file(path=temp_dir)
-        assert os.listdir(temp_dir) == ['y.dat']
-        with open(temp_dir+"//y.dat") as f:
-            assert f.readlines() == ['0\t1\n']
+    path = str(tmp_path_factory.mktemp("write_data_to_text_file_save"))
+    dataset.write_data_to_text_file(path=path)
+    assert os.listdir(path) == ['y.dat']
+    with open(os.path.join(path, "y.dat")) as f:
+        assert f.readlines() == ['0\t1\n']
 
 
 @pytest.mark.usefixtures('experiment')
-def test_write_data_to_text_file_save_multi_keys():
+def test_write_data_to_text_file_save_multi_keys(tmp_path_factory):
     dataset = new_data_set("dataset")
     xparam = ParamSpecBase("x", 'numeric')
     yparam = ParamSpecBase("y", 'numeric')
@@ -1255,18 +1242,18 @@ def test_write_data_to_text_file_save_multi_keys():
     results = [{'x': 0, 'y': 1, 'z': 2}]
     dataset.add_results(results)
     dataset.mark_completed()
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        dataset.write_data_to_text_file(path=temp_dir)
-        assert sorted(os.listdir(temp_dir)) == ['y.dat', 'z.dat']
-        with open(temp_dir+"//y.dat") as f:
-            assert f.readlines() == ['0\t1\n']
-        with open(temp_dir+"//z.dat") as f:
-            assert f.readlines() == ['0\t2\n']
+    tmp_path = tmp_path_factory.mktemp("data_to_text_file_save_multi_keys")
+    path = str(tmp_path)
+    dataset.write_data_to_text_file(path=path)
+    assert sorted(os.listdir(path)) == ['y.dat', 'z.dat']
+    with open(os.path.join(path, "y.dat")) as f:
+        assert f.readlines() == ['0\t1\n']
+    with open(os.path.join(path, "z.dat")) as f:
+        assert f.readlines() == ['0\t2\n']
 
 
 @pytest.mark.usefixtures('experiment')
-def test_write_data_to_text_file_save_single_file():
+def test_write_data_to_text_file_save_single_file(tmp_path_factory):
     dataset = new_data_set("dataset")
     xparam = ParamSpecBase("x", 'numeric')
     yparam = ParamSpecBase("y", 'numeric')
@@ -1278,17 +1265,17 @@ def test_write_data_to_text_file_save_single_file():
     results = [{'x': 0, 'y': 1, 'z': 2}]
     dataset.add_results(results)
     dataset.mark_completed()
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        dataset.write_data_to_text_file(path=temp_dir, single_file=True,
-                                           single_file_name='yz')
-        assert os.listdir(temp_dir) == ['yz.dat']
-        with open(temp_dir+"//yz.dat") as f:
-            assert f.readlines() == ['0\t1\t2\n']
+    tmp_path = tmp_path_factory.mktemp("to_text_file_save_single_file")
+    path = str(tmp_path)
+    dataset.write_data_to_text_file(path=path, single_file=True,
+                                    single_file_name='yz')
+    assert os.listdir(path) == ['yz.dat']
+    with open(os.path.join(path, "yz.dat")) as f:
+        assert f.readlines() == ['0\t1\t2\n']
 
 
 @pytest.mark.usefixtures('experiment')
-def test_write_data_to_text_file_length_exception():
+def test_write_data_to_text_file_length_exception(tmp_path):
     dataset = new_data_set("dataset")
     xparam = ParamSpecBase("x", 'numeric')
     yparam = ParamSpecBase("y", 'numeric')
@@ -1305,13 +1292,14 @@ def test_write_data_to_text_file_length_exception():
     dataset.add_results(results3)
     dataset.mark_completed()
 
-    with tempfile.TemporaryDirectory() as temp_dir, pytest.raises(Exception, match='different length'):
+    temp_dir = str(tmp_path)
+    with pytest.raises(Exception, match='different length'):
         dataset.write_data_to_text_file(path=temp_dir, single_file=True,
-                                           single_file_name='yz')
+                                        single_file_name='yz')
 
 
 @pytest.mark.usefixtures('experiment')
-def test_write_data_to_text_file_name_exception():
+def test_write_data_to_text_file_name_exception(tmp_path):
     dataset = new_data_set("dataset")
     xparam = ParamSpecBase("x", 'numeric')
     yparam = ParamSpecBase("y", 'numeric')
@@ -1324,6 +1312,7 @@ def test_write_data_to_text_file_name_exception():
     dataset.add_results(results)
     dataset.mark_completed()
 
-    with tempfile.TemporaryDirectory() as temp_dir, pytest.raises(Exception, match='desired file name'):
+    temp_dir = str(tmp_path)
+    with pytest.raises(Exception, match='desired file name'):
         dataset.write_data_to_text_file(path=temp_dir, single_file=True,
-                                           single_file_name=None)
+                                        single_file_name=None)
